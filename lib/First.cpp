@@ -1,11 +1,12 @@
-#include "First.h"
+#include "Common.h"
+#include <First.h>
 
 int num_of_rules = 0;
 int current_num_of_rules_done = 0;
 
 void FirstGenerator::init(
-    Rules &mid_rules, unordered_map<string, vector<int>> &index_of_rules,
-    unordered_map<string, vector<bool>> &production_done) {
+    Rules &mid_rules, std::unordered_map<std::string, std::vector<int>> &index_of_rules,
+    std::unordered_map<std::string, std::vector<bool>> &production_done) {
   for (auto &e : rules) {
     Productions p;
 
@@ -13,30 +14,30 @@ void FirstGenerator::init(
       p.push_back({v[0]});
 
     mid_rules.insert(make_pair(e.first, p));
-    first.insert(make_pair(e.first, set<string>()));
+    first.insert(make_pair(e.first, std::set<std::string>()));
     production_done.insert(
-        make_pair(e.first, vector<bool>(e.second.size(), false)));
-    index_of_rules.insert(make_pair(e.first, vector<int>(1, 0)));
+        make_pair(e.first, std::vector<bool>(e.second.size(), false)));
+    index_of_rules.insert(make_pair(e.first, std::vector<int>(1, 0)));
   }
   num_of_rules = rules.size();
 }
 
-bool FirstGenerator::is_rule_done(const string &rule, set<string> &rule_done) {
+bool FirstGenerator::is_rule_done(const std::string &rule, std::set<std::string> &rule_done) {
   return rule_done.find(rule) != rule_done.end();
 }
 
 bool FirstGenerator::is_production_done(
-    const string &rule, int production_index,
-    unordered_map<string, vector<bool>> &production_done) {
+    const std::string &rule, int production_index,
+    std::unordered_map<std::string, std::vector<bool>> &production_done) {
   return production_done.find(rule)->second[production_index];
 }
 
-set<string> FirstGenerator::first_of_symbol(
-    const string &rule, int production_index, const string &symbol, bool &done,
-    Rules &mid_rules, set<string> &rule_done,
-    unordered_map<string, vector<int>> &index_of_rules) {
+std::set<std::string> FirstGenerator::first_of_symbol(
+    const std::string &rule, int production_index, const std::string &symbol, bool &done,
+    Rules &mid_rules, std::set<std::string> &rule_done,
+    std::unordered_map<std::string, std::vector<int>> &index_of_rules) {
   // If it is terminal, mark production as done and retrun the symbol
-  if (is_terminal(rules, symbol)) {
+  if (IsTerminal(rules, symbol)) {
     done = true;
     return {symbol};
   } else {
@@ -44,14 +45,14 @@ set<string> FirstGenerator::first_of_symbol(
     // productions done
     if (is_rule_done(symbol, rule_done)) {
       // Get his firsts
-      set<string> production = first.find(symbol)->second;
+      std::set<std::string> production = first.find(symbol)->second;
 
       // Check if it has ε
-      if (auto it = production.find(EPSILON); it != production.end()) {
+      if (auto it = production.find(EpsilonStr.data()); it != production.end()) {
         // Does contain ε
 
         // As it contains ε, we need to process the first of the next symbol
-        int next_symbol =
+        std::size_t next_symbol =
             ++index_of_rules.find(symbol)->second[production_index];
         if (next_symbol < rules.find(rule)->second[production_index].size()) {
           // Delete ε
@@ -84,9 +85,9 @@ set<string> FirstGenerator::first_of_symbol(
 }
 
 void FirstGenerator::get_first(
-    Rules &mid_rules, set<string> &rule_done,
-    unordered_map<string, vector<bool>> &production_done,
-    unordered_map<string, vector<int>> &index_of_rules) {
+    Rules &mid_rules, std::set<std::string> &rule_done,
+    std::unordered_map<std::string, std::vector<bool>> &production_done,
+    std::unordered_map<std::string, std::vector<int>> &index_of_rules) {
 
   // While there is still one rule to be done, keep iterating
   for (int cont = 0; cont < 100; ++cont) {
@@ -98,13 +99,13 @@ void FirstGenerator::get_first(
         bool completed_rule = true;
 
         // Iterate over all productions of each rules
-        for (int i = 0; i < rule.second.size(); ++i) {
+        for (std::size_t i = 0; i < rule.second.size(); ++i) {
           // Only process the remaining productions
           if (!is_production_done(rule.first, i, production_done)) {
             // Get next symbol of production to process
-            string symbol(rule.second[i][rule.second[i].size() - 1]);
+            std::string symbol(rule.second[i][rule.second[i].size() - 1]);
             bool done = false;
-            set<string> first_of =
+            std::set<std::string> first_of =
                 first_of_symbol(rule.first, i, symbol, done, mid_rules,
                                 rule_done, index_of_rules);
 
@@ -129,10 +130,5 @@ void FirstGenerator::get_first(
         }
       }
     }
-  }
-
-  for (auto &rule : rules) {
-    if (rule_done.find(rule.first) == rule_done.end())
-      cout << rule.first << endl;
   }
 }

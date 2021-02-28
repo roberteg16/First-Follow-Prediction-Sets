@@ -1,21 +1,21 @@
 #ifndef __FIRST_H__
 #define __FIRST_H__
 
-#include "Common.h"
+#include <Common.h>
 
 class FirstGenerator {
 public:
   FirstGenerator();
-  FirstGenerator(Rules &rules) : rules(rules) {
+  FirstGenerator(const Rules &rules) : rules(rules) {
     // Mid data that we will be appeding to new symbols
     Rules mid_rules;
     // Index of the position of the symbol we are processing for production of
     // each rule
-    unordered_map<string, vector<int>> index_of_rules;
+    std::unordered_map<std::string, std::vector<int>> index_of_rules;
     // Rules done
-    set<string> rule_done;
+    std::set<std::string> rule_done;
     // Productions done
-    unordered_map<string, vector<bool>> production_done;
+    std::unordered_map<std::string, std::vector<bool>> production_done;
 
     init(mid_rules, index_of_rules, production_done);
     get_first(mid_rules, rule_done, production_done, index_of_rules);
@@ -23,8 +23,8 @@ public:
 
   Result &get_first() { return first; }
 
-  template <typename T = ostream>
-  static void print_first(Result &first, T &out = cout) {
+  template <typename T = std::ostream>
+  static void print_first(const Result &first, T &out = std::cout) {
     for (auto e : first) {
       out << e.first << '\n';
       out << '\t';
@@ -36,18 +36,20 @@ public:
   }
 
 private:
-  void get_first(Rules &, set<string> &, unordered_map<string, vector<bool>> &,
-                 unordered_map<string, vector<int>> &);
-  void init(Rules &, unordered_map<string, vector<int>> &,
-            unordered_map<string, vector<bool>> &);
-  bool is_rule_done(const string &, set<string> &);
-  bool is_production_done(const string &, int,
-                          unordered_map<string, vector<bool>> &);
-  set<string> first_of_symbol(const string &, int, const string &, bool &,
-                              Rules &, set<string> &,
-                              unordered_map<string, vector<int>> &);
+  void get_first(Rules &, std::set<std::string> &,
+                 std::unordered_map<std::string, std::vector<bool>> &,
+                 std::unordered_map<std::string, std::vector<int>> &);
+  void init(Rules &, std::unordered_map<std::string, std::vector<int>> &,
+            std::unordered_map<std::string, std::vector<bool>> &);
+  bool is_rule_done(const std::string &, std::set<std::string> &);
+  bool is_production_done(const std::string &, int,
+                          std::unordered_map<std::string, std::vector<bool>> &);
+  std::set<std::string>
+  first_of_symbol(const std::string &, int, const std::string &, bool &,
+                  Rules &, std::set<std::string> &,
+                  std::unordered_map<std::string, std::vector<int>> &);
 
-  Rules rules;
+  const Rules &rules;
   // End data. The result of the algorithm, all the first symbols of each non
   // terminal.
   Result first;

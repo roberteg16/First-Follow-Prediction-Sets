@@ -1,9 +1,11 @@
-#include "Common.h"
+#include <Common.h>
 
-bool is_nonterminal(const Rules &rules, const string &symbol) {
+bool IsNonterminal(const Rules& rules, const std::string& symbol)
+{
   return rules.find(symbol) != rules.end();
 }
 
-bool is_terminal(const Rules &rules, const string &symbol) {
-  return !is_nonterminal(rules, symbol);
+bool IsTerminal(const Rules& rules, const std::string& symbol)
+{
+  return !IsNonterminal(rules, symbol);
 }

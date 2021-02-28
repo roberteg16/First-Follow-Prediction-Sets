@@ -1,312 +1,345 @@
-#include "Rules.h"
+#include <Rules.h>
 
-void RuleGenerator::type_and_var(string &line, string &type, string &var) {
-  char separator = ' ';
-  size_t pos = line.find(separator);
-  size_t initialPos = 0;
+#include <Common.h>
+#include <cassert>
+#include <span>
+#include <string_view>
 
-  type = line.substr(initialPos, pos - initialPos);
-  initialPos = pos + 1;
-  pos = line.find(separator, initialPos);
-  var = line.substr(initialPos, pos - initialPos);
+static std::string GetLine(std::ifstream &ifile) {
+  std::string line;
+  std::getline(ifile, line);
+  return line;
 }
 
-vector<string> RuleGenerator::split(const string &txt, const char ch) {
-  size_t pos = txt.find(ch);
-  size_t initialPos = 0;
+static std::vector<std::string_view> SplitLine(std::string_view line) {
+  std::vector<std::string_view> splitedLine;
+  constexpr char delim = ' ';
+  size_t prev = 0, pos = 0;
+  do {
+    pos = line.find(delim, prev);
+    if (pos == std::string::npos) {
+      pos = line.length();
+    }
 
-  vector<string> strs;
-  // Decompose statement
-  while (pos != string::npos) {
-    strs.push_back(txt.substr(initialPos, pos - initialPos));
+    std::string_view token = line.substr(prev, pos - prev);
 
-    initialPos = pos + 1;
-    pos = txt.find(ch, initialPos);
+    if (!token.empty()) {
+      splitedLine.push_back(token);
+    }
+
+    prev = pos + 1;
+  } while (pos < line.length() && prev < line.length());
+
+  return splitedLine;
+}
+
+static bool IsSeparator(std::string_view data) { return data == "->"; }
+
+static std::optional<PartialRule> GetPartialRule(std::string_view line) {
+  std::vector<std::string_view> splitedLine = SplitLine(line);
+  // At least "Rule -> Symbol"
+  if (splitedLine.size() < 3) {
+    return std::nullopt;
   }
 
-  if (initialPos < txt.size())
-    strs.push_back(txt.substr(initialPos, txt.size() - initialPos));
+  if (!IsSeparator(splitedLine[1])) {
+    return std::nullopt;
+  }
 
-  return strs;
+  std::string_view ruleOfProduction = splitedLine[0];
+  auto production = std::span<std::string_view>{
+      std::next(splitedLine.begin(), 2), splitedLine.end()};
+
+  return PartialRule{std::string(ruleOfProduction),
+                     {production.begin(), production.end()}};
 }
 
-void RuleGenerator::trim(string &line) {
-  int start = 0;
-  int end = line.size() - 1;
+static std::size_t GetDiscondancePos(const std::vector<std::string> &prod1,
+                                     const std::vector<std::string> &prod2) {
+  assert(!prod1.empty() && !prod2.empty() &&
+         "The productions can not be empty!");
 
-  while (line[start] == ' ' || line[start] == '\t')
-    start++;
-  while (line[end] == ' ' || line[end] == '\t')
-    end--;
-  line = line.substr(start, (end + 1) - start);
-}
-
-vector<string> RuleGenerator::load_lines(const char *file_name) {
-  vector<string> rules_s;
-
-  ifstream t(file_name);
-
-  string line;
-  while (std::getline(t, line)) {
-    if (line.size() > 0) {
-      trim(line);
-      rules_s.push_back(move(line));
+  std::size_t i = 0;
+  for (; i < prod1.size() && i < prod2.size(); ++i) {
+    if (prod1[i] != prod2[i]) {
+      return i;
     }
   }
-  t.close();
-
-  return rules_s;
+  return i;
 }
 
-void RuleGenerator::insert_in_rules(const string &rule,
-                                    vector<string> &&production) {
-  auto it = rules.find(rule);
-
-  if (it != rules.end()) {
-    // Does exist
-    it->second.push_back(move(production));
-  } else {
-    // Does not exist
-    pair<string, vector<vector<string>>> p;
-    p.first = rule;
-    p.second.push_back(move(production));
-
-    rules.insert(move(p));
+std::vector<std::string>
+GetCommonFactors(const std::vector<std::string> &prod1,
+                 const std::vector<std::string> &prod2) {
+  if (prod1.empty() || prod2.empty()) {
+    return prod1.empty() ? prod2 : prod1;
   }
+
+  std::size_t discordancePos = GetDiscondancePos(prod1, prod2);
+  return {prod1.begin(), std::next(prod1.begin(), discordancePos)};
 }
 
-bool RuleGenerator::exists_in_productions(const string &rule,
-                                          const vector<string> &production) {
-  auto it = rules.find(rule);
+static std::set<std::string_view>
+GetLeftSymbolsRepeatedMoreThanOne(const Productions &productions) {
+  std::unordered_map<std::string_view, std::size_t> map;
 
-  if (it == rules.end())
-    return false;
+  std::ranges::for_each(productions,
+                        [&](const Production &prod) { map[prod.front()]++; });
 
-  auto &productions = it->second;
-
-  for (auto &production_ : productions) {
-    bool exit = false;
-    int i = 0;
-    for (; i < production.size() && i < production_.size() && !exit; ++i) {
-      if (production_[i] != production[i])
-        exit = true;
+  std::set<std::string_view> result;
+  for (auto &[symbol, ocurrences] : map) {
+    if (ocurrences > 1) {
+      result.insert(symbol);
     }
-    if (i == production.size() && i == production_.size() && !exit)
-      return true;
   }
-  return false;
+
+  return result;
 }
 
-bool RuleGenerator::solve_common_factors_by_the_left() {
-  for (auto rule_pair = rules.begin(); rule_pair != rules.end(); ++rule_pair) {
-    vector<vector<string>> &productions = rule_pair->second;
+static std::unordered_map<std::string_view, std::vector<std::string>>
+GetLeftCommonSymbols(const Productions &productions) {
 
-    vector<set<int>> index_of_left_common_factors;
-    for (int i = 0; i < productions.size(); ++i) {
-      for (auto &set_of_index : index_of_left_common_factors)
-        for (auto element : set_of_index)
-          if (i == element)
-            goto do_nothing;
+  std::set<std::string_view> repeatedSymbols =
+      GetLeftSymbolsRepeatedMoreThanOne(productions);
 
-      {
-        set<int> index;
-        for (int j = 0; j < productions.size(); ++j) {
-          if (i != j && productions[i][0] == productions[j][0]) {
-            index.insert(i);
-            index.insert(j);
-          }
-        }
-        if (index.size() > 0)
-          index_of_left_common_factors.push_back(move(index));
+  std::unordered_map<std::string_view, std::vector<std::string>> result;
+
+  for (const Production &prod2 : productions) {
+    if (!repeatedSymbols.contains(prod2.front())) {
+      continue;
+    }
+
+    Production &prod1 = result[prod2.front()];
+    prod1 = GetCommonFactors(prod1, prod2);
+  }
+
+  return result;
+}
+
+static void SolveCommonFactorsByTheLeft(Rules &rules) {
+  bool changed = true;
+
+  while (changed) {
+    changed = false;
+    for (auto &[symbol, productions] : rules) {
+      auto leftCommonSymbolsMap = GetLeftCommonSymbols(productions);
+      if (leftCommonSymbolsMap.empty()) {
+        continue;
       }
 
-    do_nothing:;
-    }
+      std::string newRule = symbol + "_CFL";
+      Productions newProductions;
+      bool alreadyAddedEpsilon = false;
 
-    if (index_of_left_common_factors.size() > 0) {
-      vector<vector<string>> productions_to_add_after_deleted_old_ones;
-      vector<vector<int>> indexs;
-      for (auto &set_of_index : index_of_left_common_factors) {
-        // Extract minimun index inside productions
-        vector<int> index(set_of_index.begin(), set_of_index.end());
-        sort(index.begin(), index.end());
-
-        int minimun = INT_MAX;
-        for (int i = 0; i < index.size(); ++i) {
-          for (int j = i + 1; j < index.size(); ++j) {
-
-            int k = 0;
-            while (productions[index[i]][k] == productions[index[j]][k] &&
-                   k < productions[index[i]].size() &&
-                   k < productions[index[j]].size()) {
-              k++;
-            }
-            minimun = min(minimun, k);
-          }
+      for (Production &prod : productions) {
+        if (!leftCommonSymbolsMap.contains(prod.front())) {
+          continue;
         }
 
-        // Got minimun
-        string new_rule_str = rule_pair->first + "_CFL";
-
-        for (int i = 0; i < index.size(); ++i) {
-          int starter = minimun;
-          vector<string> new_production;
-
-          if (minimun == productions[index[i]].size()) {
-            // Insert epsilon
-            new_production.emplace_back("epsilon");
-          } else {
-            // Insert remaining symbols
-            while (starter < productions[index[i]].size()) {
-              new_production.push_back(productions[index[i]][starter]);
-              starter++;
-            }
-          }
-
-          if (!exists_in_productions(new_rule_str, new_production))
-            insert_in_rules(new_rule_str, move(new_production));
+        // Add epsilon in case of unique symbol and not added yet
+        if (!alreadyAddedEpsilon && prod.size() == 1) {
+          alreadyAddedEpsilon = true;
+          newProductions.push_back({EpsilonStr.data()});
+          prod.clear();
+          continue;
         }
 
-        vector<string> modified_production;
-        for (int i = 0; i < minimun; ++i) {
-          modified_production.push_back(productions[index[0]][i]);
-        }
-        modified_production.push_back(move(new_rule_str));
-        productions_to_add_after_deleted_old_ones.push_back(
-            move(modified_production));
-        indexs.push_back(move(index));
+        // Add the common part to a new production of the new rule
+        std::size_t discordancePos =
+            GetDiscondancePos(leftCommonSymbolsMap[prod.front()], prod);
+        newProductions.push_back(
+            {std::next(prod.begin(), discordancePos), prod.end()});
+
+        // Remove from production being factored
+        prod.erase(std::next(prod.begin(), discordancePos), prod.end());
+        // Append new rule
+        prod.push_back(newRule);
       }
 
-      vector<int> already_deleted;
-      for (auto &index : indexs) {
-        for (auto i : index) {
-          int deleted = 0;
-          for (auto element : already_deleted) {
-            if (element < i)
-              deleted++;
-          }
-          int aux_index = i - deleted;
+      // Append new productions
+      rules[newRule] = std::move(newProductions);
 
-          auto it = productions.begin();
-          while (aux_index--)
-            ++it;
-          productions.erase(it);
-          already_deleted.push_back(i);
-        }
-      }
+      // Remove duplicates generated by left factoring
+      std::sort(productions.begin(), productions.end());
+      productions.erase(unique(productions.begin(), productions.end()),
+                        productions.end());
 
-      for (auto &e : productions_to_add_after_deleted_old_ones)
-        productions.push_back(move(e));
+      // Remove empty productions
+      const auto it =
+          std::remove_if(productions.begin(), productions.end(),
+                         [](const Production &prod) { return prod.empty(); });
+      productions.erase(it, productions.end());
 
-      return true;
-    }
-  }
-  return false;
-}
-
-void RuleGenerator::solve_left_recursion() {
-  for (auto &rule : rules) {
-    for (auto it = rule.second.begin(); it != rule.second.end(); ++it) {
-      if (rule.second.size() > 0 && rule.first == (*it)[0]) {
-        string new_rule(rule.first + "_LR");
-        vector<string> right_symbols(++(*it).begin(), (*it).end());
-        rule.second.erase(it);
-
-        for (auto &rewrite_rule : rule.second) {
-          rewrite_rule.push_back(new_rule);
-        }
-
-        // New Rule
-        pair<string, vector<vector<string>>> p;
-        p.first = new_rule;
-        right_symbols.push_back(move(new_rule));
-        p.second.push_back(move(right_symbols));
-        vector<string> v;
-        v.emplace_back("epsilon");
-        p.second.push_back(move(v));
-
-        rules.insert(move(p));
-
-        break;
-      }
-    }
-  }
-}
-
-void RuleGenerator::load_rules(string_view file_name) {
-  vector<string> lines = load_lines(file_name.data());
-
-  auto it = lines.begin();
-
-  // Load Classes
-  while (it != lines.end()) {
-
-    if (*it == END_OF_CLASES) {
-      ++it;
+      changed = true;
       break;
     }
-
-    // Read Class
-    vector<Variable> vec;
-    string name_class = move(*it);
-    ++it;
-
-    // Read Type and name
-    while (*it != ";") {
-      struct Variable var;
-
-      type_and_var(*it, var.type, var.name);
-      vec.push_back(move(var));
-      ++it;
-    }
-    ++it;
-    classes.insert(make_pair(move(name_class), move(vec)));
   }
+}
 
-  // Load Rules
-  while (it != lines.end()) {
-    /*vector<string> v = split(*it, ' ');
+static void SolveLeftRecursion(Rules &rules) {
+  for (auto &[symbol, ruleProductions] : rules) {
 
-    string rule = move(v[0]);
+    // Recover all productions that start the the rule
+    std::vector<Productions::iterator> productionsWithRulePrefix;
 
-    bool has_especial_return_type = v[1] != "->";
-    size_t starting_rules = has_especial_return_type ? 3 : 2;
-
-    string especial_return_type;
-    if(has_especial_return_type)
-      especial_return_type = move(v[1]);
-
-    vector< vector<string> > vector_aux;
-    */
-
-    // Get first
-    vector<string> v = split(*it, ' ');
-    string rule = move(v[0]);
-    Productions all_productions;
-
-    Production rules_v;
-    for (int i = 2; i < v.size(); ++i)
-      rules_v.push_back(move(v[i]));
-
-    all_productions.push_back(move(rules_v));
-
-    bool exit = false;
-    // get all next productions of the same rule
-    ++it;
-    while (!exit && it != lines.end()) {
-      rules_v.clear();
-      v = split(*it, ' ');
-
-      if (v[0] == "|") {
-        for (int i = 1; i < v.size(); ++i)
-          rules_v.push_back(move(v[i]));
-        all_productions.push_back(move(rules_v));
-        ++it;
-      } else {
-        exit = true;
+    for (auto it = ruleProductions.begin(), itEnd = ruleProductions.end();
+         it != itEnd; it++) {
+      Production &production = *it;
+      assert(production.size() && "Production without elements!");
+      // If rule is same as its first symbol of its production
+      if (symbol == production.front()) {
+        productionsWithRulePrefix.push_back(it);
       }
     }
 
-    rules.insert(make_pair(move(rule), move(all_productions)));
+    if (productionsWithRulePrefix.empty()) {
+      continue;
+    }
+
+    // Create new Rule with _LR suffix and with new symbols
+    std::string newRule = symbol + "_LR";
+    Productions newProductions;
+
+    // Create new productions, one for each production starting with the non
+    // terminal symbol of the rule
+    for (auto it : productionsWithRulePrefix) {
+      Production &production = *it;
+      std::vector<std::string> newProduction(std::next(production.begin(), 1),
+                                             production.end());
+      newProduction.push_back(newRule);
+
+      newProductions.push_back(std::move(newProduction));
+    }
+    // Append epsilon
+    newProductions.push_back({EpsilonStr.data()});
+
+    // Remove from the original production
+    const auto it =
+        std::remove_if(ruleProductions.begin(), ruleProductions.end(),
+                       [&symbol = symbol](const auto &production) {
+                         return symbol == production.front();
+                       });
+    ruleProductions.erase(it, ruleProductions.end());
+
+    // Append to the end of all the productions
+    for (std::vector<std::string> &production : ruleProductions) {
+      production.push_back(newRule);
+    }
+
+    // Insert new production
+    rules[std::move(newRule)] = std::move(newProductions);
+  }
+}
+
+static std::optional<Rules> ExtractRules(std::ifstream &ifile) {
+  Rules rules;
+  while (!ifile.eof()) {
+    std::string line = GetLine(ifile);
+    if (line.empty()) {
+      continue;
+    }
+
+    std::optional<PartialRule> rule = GetPartialRule(line);
+    if (!rule) {
+      std::cerr << "Error trying to get rule for line:\n\t " << line << '\n';
+      return std::nullopt;
+    }
+
+    rules[rule->Rule].push_back(std::move(rule->Production));
+  }
+  return rules;
+}
+
+struct IndirectLeftRecursionInfo {
+  std::string_view Symbol;
+  std::set<std::string> FirstSymbolOfEachProduction;
+};
+
+static bool HasIndirectLeftRecursion(const Rules &rules) {
+  std::unordered_map<std::string_view, std::set<std::string>> ILLIs;
+  for (auto &[symbol, productions] : rules) {
+    IndirectLeftRecursionInfo ILLI;
+    ILLI.Symbol = symbol;
+    for (auto production : productions) {
+      auto frontSym = production.front();
+      if (IsNonterminal(rules, frontSym) && symbol != frontSym) {
+        ILLI.FirstSymbolOfEachProduction.insert(frontSym);
+      }
+    }
+    ILLIs.insert({ILLI.Symbol, std::move(ILLI.FirstSymbolOfEachProduction)});
+  }
+
+  for (auto &[symbol, firstSymbolOfEachProduction] : ILLIs) {
+    std::set<std::string_view> symbolsAlreadySeen;
+    std::set<std::string_view> symbolsToSee({symbol});
+
+    while (!symbolsToSee.empty()) {
+      std::string_view symbolToSee = *symbolsToSee.begin();
+      symbolsToSee.erase(symbolToSee);
+
+      assert(ILLIs.contains(symbolToSee) && "symbolToSee not found in map!");
+      if (ILLIs[symbolToSee].contains(symbol.data())) {
+        return true;
+      }
+
+      if (const auto [sym, ok] = symbolsAlreadySeen.insert(symbolToSee); ok) {
+        symbolsToSee.insert(ILLIs[symbolToSee].begin(),
+                            ILLIs[symbolToSee].end());
+      }
+    }
+  }
+
+  return false;
+}
+
+std::optional<Rules> ffps::BuildRules(std::string_view file,
+                                      bool solveLeftRecursion,
+                                      bool solveCommonFactorsByTheLeft) {
+  std::ifstream ifile(file.data());
+
+  if (!ifile) {
+    std::cerr << "File \"" << file << "\" not found!\n";
+    return std::nullopt;
+  }
+
+  std::optional<Rules> rules = ExtractRules(ifile);
+  if (!rules) {
+    return std::nullopt;
+  }
+
+  if (HasIndirectLeftRecursion(*rules)) {
+    std::cerr << "Indirect left recursion not supported yet!\n";
+    return std::nullopt;
+  }
+
+  std::cout << "=================================\n";
+  ffps::Print(*rules, std::cout);
+  std::cout << "=================================\n";
+
+  if (solveLeftRecursion) {
+    SolveLeftRecursion(*rules);
+  }
+
+  if (solveCommonFactorsByTheLeft) {
+    SolveCommonFactorsByTheLeft(*rules);
+  }
+
+  std::cout << "=================================\n";
+  ffps::Print(*rules, std::cout);
+  std::cout << "=================================\n";
+
+  return rules;
+}
+
+void ffps::Print(const Rules &rules, std::ostream &out) {
+  for (auto &[rule, productions] : rules) {
+    out << rule << '\n';
+    for (Production production : productions) {
+      out << '\t';
+      for (std::string_view symbol : production)
+        std::cout << symbol << ' ';
+      out << '\n';
+    }
+    out << '\n';
   }
 }

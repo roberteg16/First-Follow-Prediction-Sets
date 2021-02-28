@@ -1,0 +1,77 @@
+Start -> List_of_declarations
+
+List_of_declarations -> Declaration List_of_declarations
+List_of_declarations -> epsilon
+
+Declaration -> Declaration_var
+Declaration -> Declaration_func
+
+Declaration_var_brief -> Type identifier
+Declaration_var -> Declaration_var_brief semicolon
+
+Declaration_func -> identifier doubledot List_of_vars arrow Type Block
+Declaration_func -> identifier doubledot List_of_vars Block
+
+List_of_vars -> Declaration_var_brief List_of_vars_next
+List_of_vars -> epsilon
+List_of_vars_next -> comma Declaration_var_brief List_of_vars_next
+List_of_vars_next -> epsilon
+
+Block -> { List_of_stmt }
+
+List_of_stmt -> Stmt List_of_stmt
+List_of_stmt -> epsilon
+
+Stmt -> for ( Declaration_var ; Expr ; ) Block
+Stmt -> if ( Expr ) Block
+Stmt -> if ( Expr ) Block else Block
+Stmt -> while ( Expr ) ;
+Stmt -> while ( Expr ) Block
+Stmt -> ret Expr ;
+Stmt -> Expr ;
+Stmt -> Block
+
+Expr -> Term Opcode Term 
+
+Term -> identifier
+Term -> Number
+Term -> Function_call
+
+Function_call -> identifier ( List_of_terms ) ;
+
+List_of_terms -> Term List_of_terms_next
+List_of_terms -> epsilon
+List_of_terms_next -> comma Term List_of_terms_next
+List_of_terms_next -> epsilon
+
+Opcode -> +
+Opcode -> -
+Opcode -> /
+Opcode -> *
+Opcode -> =
+Opcode -> &
+Opcode -> |
+Opcode -> &&
+Opcode -> ||
+Opcode -> <
+Opcode -> >
+Opcode -> <=
+Opcode -> >=
+Opcode -> ==
+
+Type -> i64
+Type -> u64
+Type -> i32
+Type -> u32
+Type -> i16
+Type -> u16
+Type -> i8
+Type -> u8
+Type -> f80
+Type -> f64
+Type -> f32
+
+Literal -> Number
+
+Number -> integer
+Number -> real

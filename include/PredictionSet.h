@@ -1,73 +1,67 @@
 #ifndef __PREDICTIONSET_H__
 #define __PREDICTIONSET_H__
 
-#include "Common.h"
-#include "First.h"
-#include "Following.h"
-#include "Rules.h"
+#include <Common.h>
+#include <Rules.h>
+#include <First.h>
+#include <Following.h>
 
-class PredictionSetGenerator {
-public:
-  PredictionSetGenerator(Rules &rules, Result &first, Result &following)
-      : rules(rules), first(first), following(following) {
-    // Init data
-    init();
-    process_production_set();
-  }
+class PredictionSetGenerator
+{
+  public:
+    PredictionSetGenerator(const Rules &rules, const Result &first,
+                           const Result &following)
+        : Rules(rules), First(first), Following(following) {
+      // Init data
+      init();
+      process_production_set();
+    }
 
-  PredictionSetGenerator(string_view file) {
-    RuleGenerator ruleGenerator(file);
-    FirstGenerator firstGenerator(ruleGenerator.get_rules());
-    FollowingGenerator followingGenerator(ruleGenerator.get_rules(),
-                                          firstGenerator.get_first());
-    rules = ruleGenerator.get_rules();
-    first = firstGenerator.get_first();
-    following = followingGenerator.get_following();
+    void print_rules();
+    void print_first();
+    void print_following();
+    void print_prediction_set();
 
-    init();
-    process_production_set();
-  }
+    void write_rules_to_file(std::string_view file, const Rules &);
 
-  void print_rules();
-  void print_first();
-  void print_following();
-  void print_prediction_set();
+    const Rules &get_rules() { return Rules; }
+    const Result &get_first() { return First; }
+    const Result &get_following() { return Following; }
+    ProductionSet& get_production_set() { return production_set; }
 
-  void write_rules_to_file(string_view file, Rules &);
+    template<class T>
+    void writeValue(T value, std::ostream& f) const{
+    	f.write(reinterpret_cast<char*> (&value), sizeof(value));
+    }
+    void writeString(const std::string& s, std::ostream& f) const;
 
-  Rules &get_rules() { return rules; }
-  Result &get_first() { return first; }
-  Result &get_following() { return following; }
-  ProductionSet &get_production_set() { return production_set; }
-
-  template <class T> void writeValue(T value, ostream &f) const {
-    f.write(reinterpret_cast<char *>(&value), sizeof(value));
-  }
-  void writeString(const string &s, ostream &f) const;
-
-  template <typename T = ostream> void print_production_set(T &out = cout) {
-    for (auto e : production_set) {
-      out << e.first << '\n';
-      for (auto &v : e.second) {
-        out << '\t';
-        for (auto &ve : v)
-          out << ve << ' ';
+    template<typename T = std::ostream>
+    void print_production_set(T& out = std::cout)
+    {
+      for(auto e : production_set)
+      {
+        out << e.first << '\n';
+        for(auto& v : e.second)
+        {
+          out << '\t';
+          for(auto& ve : v)
+            out << ve << ' ';
+          out << '\n';
+        }
         out << '\n';
       }
-      out << '\n';
     }
-  }
 
-private:
-  void init();
-  void process_production_set();
-  set<string> first_of_production(Production &);
+  private:
+    void init();
+    void process_production_set();
+    std::set<std::string> first_of_production(const Production &);
 
-  Rules rules;
-  Result first;
-  Result following;
+    const Rules &Rules;
+    const Result &First;
+    const Result &Following;
 
-  // Result of PredictionSet
-  ProductionSet production_set;
+    //Result of PredictionSet
+    ProductionSet production_set;
 };
 #endif

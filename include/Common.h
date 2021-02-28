@@ -9,22 +9,30 @@
 #include <utility>
 #include <vector>
 
-#define EPSILON "epsilon"
-#define START "Start"
-#define ENDL '\n'
+constexpr std::string_view StartStr{"Start"};
+constexpr std::string_view EpsilonStr{"epsilon"};
 #define MAX_ITERATIONS 100
 
-using namespace std;
+using Result = std::unordered_map<std::string, std::set<std::string>>;
+using Production = std::vector<std::string>;
+using Productions = std::vector<Production>;
 
-typedef unordered_map<string, set<string>> Result;
-typedef vector<string> Production;
-typedef vector<Production> Productions;
-typedef unordered_map<string, Productions> Rules;
-typedef Rules ProductionSet;
-typedef unordered_map<string, vector<pair<string, vector<string>>>>
-    Init_data_following;
+using PartialRule = struct {
+  std::string Rule;
+  Production Production;
+};
 
-bool is_nonterminal(const Rules &rules, const string &symbol);
-bool is_terminal(const Rules &rules, const string &symbol);
+using Rule = struct {
+  std::string Rule;
+  Productions Productions;
+};
+
+using Rules = std::unordered_map<std::string, Productions>;
+using ProductionSet = Rules;
+using InitDataFollowing = std::unordered_map<
+    std::string, std::vector<std::pair<std::string, std::vector<std::string>>>>;
+
+bool IsNonterminal(const Rules &rules, const std::string &symbol);
+bool IsTerminal(const Rules &rules, const std::string &symbol);
 
 #endif

@@ -5,5 +5,3 @@ add_library(ProductionSet STATIC
     PredictionSet.cpp
     Rules.cpp
 )
-
-target_compile_features(ProductionSet PRIVATE cxx_std_20)

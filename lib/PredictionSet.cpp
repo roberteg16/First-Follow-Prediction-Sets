@@ -1,28 +1,29 @@
-#include "PredictionSet.h"
+#include <PredictionSet.h>
 
 void PredictionSetGenerator::init() {
-  for (auto &rule : rules) {
-    pair<string, Productions> pair_ = make_pair(rule.first, Productions());
+  for (auto &rule : Rules) {
+    std::pair<std::string, Productions> pair_ =
+        make_pair(rule.first, Productions());
     production_set.insert(pair_);
   }
 }
 
-set<string>
-PredictionSetGenerator::first_of_production(Production &production) {
-  set<string> return_value;
-  for (int i = 0; i < production.size(); ++i) {
+std::set<std::string>
+PredictionSetGenerator::first_of_production(const Production &production) {
+  std::set<std::string> return_value;
+  for (std::size_t i = 0; i < production.size(); ++i) {
     auto &symbol = production[i];
-    if (auto it = first.find(symbol); it != first.end()) {
+    if (auto it = First.find(symbol); it != First.end()) {
       // Non terminal
       auto &set = it->second;
       return_value.insert(set.begin(), set.end());
 
-      if (auto it2 = return_value.find(EPSILON);
+      if (auto it2 = return_value.find(EpsilonStr.data());
           it2 != return_value.end() && i != production.size() - 1) {
         // Does contain epsilon
         return_value.erase(it2);
       } else {
-        // Does not contain EPSILON
+        // Does not contain EpsilonStr.data()
         break;
       }
     } else {
@@ -38,17 +39,17 @@ PredictionSetGenerator::first_of_production(Production &production) {
 void PredictionSetGenerator::process_production_set() {
   init();
 
-  for (auto &rule : rules) {
+  for (auto &rule : Rules) {
     for (auto &production : rule.second) {
 
       auto set_ = first_of_production(production);
 
-      set<string> avoid_duplicates;
+      std::set<std::string> avoid_duplicates;
 
-      if (auto it = set_.find(EPSILON); it != set_.end()) {
-        // Does contain EPSILON, so we delete it and insert following
+      if (auto it = set_.find(EpsilonStr.data()); it != set_.end()) {
+        // Does contain EpsilonStr.data(), so we delete it and insert following
         set_.erase(it);
-        auto &following_set = following.find(rule.first)->second;
+        auto &following_set = Following.find(rule.first)->second;
 
         avoid_duplicates.insert(following_set.begin(), following_set.end());
       }
@@ -60,13 +61,16 @@ void PredictionSetGenerator::process_production_set() {
   }
 }
 
-void PredictionSetGenerator::writeString(const string &s, ostream &f) const {
+void PredictionSetGenerator::writeString(const std::string &s,
+                                         std::ostream &f) const {
   f.write(s.c_str(), s.size());
   f.write("\0", sizeof(char));
 }
 
-void PredictionSetGenerator::write_rules_to_file(string_view file, Rules &r) {
-  ofstream outfile(file.data(), ios::binary | ios::out);
+void PredictionSetGenerator::write_rules_to_file(
+    std::string_view file,
+    const std::unordered_map<std::string, Productions> &r) {
+  std::ofstream outfile(file.data(), std::ios::binary | std::ios::out);
 
   if (outfile.is_open()) {
     writeValue(r.size(), outfile);
@@ -83,18 +87,16 @@ void PredictionSetGenerator::write_rules_to_file(string_view file, Rules &r) {
   }
 }
 
-void PredictionSetGenerator::print_rules() {
-  RuleGenerator::print_rules(rules);
-}
+void PredictionSetGenerator::print_rules() { ffps::Print(Rules, std::cout); }
 
 void PredictionSetGenerator::print_first() {
-  FirstGenerator::print_first(first);
+  FirstGenerator::print_first(First);
 }
 
 void PredictionSetGenerator::print_following() {
-  FollowingGenerator::print_following(following);
+  FollowingGenerator::print_following(Following);
 }
 
 void PredictionSetGenerator::print_prediction_set() {
-  RuleGenerator::print_rules(production_set);
+  ffps::Print(production_set, std::cout);
 }
