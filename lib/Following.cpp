@@ -112,8 +112,10 @@ void FollowingGenerator::get_following(InitDataFollowing &init_data,
   int rules_done = following_done.size();
   int prev = -1;
   int iterations = 0;
+
+  constexpr std::size_t MaxIterations = 1500;
   // Iterate till all the rules are done
-  while (rules_done < total_rules_to_be_done && iterations != MAX_ITERATIONS) {
+  while (rules_done < total_rules_to_be_done && iterations != MaxIterations) {
     prev = rules_done;
 
     // Iterate over all rules

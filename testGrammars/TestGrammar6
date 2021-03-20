@@ -1,0 +1,9 @@
+E  -> F T
+
+T  -> F2 E
+
+F  -> a
+F  -> epsilon 
+
+F2  -> a
+F2  -> epsilon

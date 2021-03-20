@@ -33,27 +33,6 @@ static std::vector<std::string_view> SplitLine(std::string_view line) {
   return splitedLine;
 }
 
-static bool IsSeparator(std::string_view data) { return data == "->"; }
-
-static std::optional<PartialRule> GetPartialRule(std::string_view line) {
-  std::vector<std::string_view> splitedLine = SplitLine(line);
-  // At least "Rule -> Symbol"
-  if (splitedLine.size() < 3) {
-    return std::nullopt;
-  }
-
-  if (!IsSeparator(splitedLine[1])) {
-    return std::nullopt;
-  }
-
-  std::string_view ruleOfProduction = splitedLine[0];
-  auto production = std::span<std::string_view>{
-      std::next(splitedLine.begin(), 2), splitedLine.end()};
-
-  return PartialRule{std::string(ruleOfProduction),
-                     {production.begin(), production.end()}};
-}
-
 static std::size_t GetDiscondancePos(const std::vector<std::string> &prod1,
                                      const std::vector<std::string> &prod2) {
   assert(!prod1.empty() && !prod2.empty() &&
@@ -136,17 +115,18 @@ static void SolveCommonFactorsByTheLeft(Rules &rules) {
           continue;
         }
 
+        // Add the common part to a new production of the new rule
+        std::size_t discordancePos =
+            GetDiscondancePos(leftCommonSymbolsMap[prod.front()], prod);
+
         // Add epsilon in case of unique symbol and not added yet
-        if (!alreadyAddedEpsilon && prod.size() == 1) {
+        if (!alreadyAddedEpsilon && prod.size() == discordancePos) {
           alreadyAddedEpsilon = true;
           newProductions.push_back({EpsilonStr.data()});
           prod.clear();
           continue;
         }
 
-        // Add the common part to a new production of the new rule
-        std::size_t discordancePos =
-            GetDiscondancePos(leftCommonSymbolsMap[prod.front()], prod);
         newProductions.push_back(
             {std::next(prod.begin(), discordancePos), prod.end()});
 
@@ -231,6 +211,32 @@ static void SolveLeftRecursion(Rules &rules) {
   }
 }
 
+static bool IsSeparator(std::string_view data) { return data == "->"; }
+
+using PartialRule = struct {
+  std::string Rule;
+  Production Production;
+};
+
+static std::optional<PartialRule> GetPartialRule(std::string_view line) {
+  std::vector<std::string_view> splitedLine = SplitLine(line);
+  // At least "Rule -> Symbol"
+  if (splitedLine.size() < 3) {
+    return std::nullopt;
+  }
+
+  if (!IsSeparator(splitedLine[1])) {
+    return std::nullopt;
+  }
+
+  std::string_view ruleOfProduction = splitedLine[0];
+  auto production = std::span<std::string_view>{
+      std::next(splitedLine.begin(), 2), splitedLine.end()};
+
+  return PartialRule{std::string(ruleOfProduction),
+                     {production.begin(), production.end()}};
+}
+
 static std::optional<Rules> ExtractRules(std::ifstream &ifile) {
   Rules rules;
   while (!ifile.eof()) {
@@ -262,7 +268,7 @@ static bool HasIndirectLeftRecursion(const Rules &rules) {
     ILLI.Symbol = symbol;
     for (auto production : productions) {
       auto frontSym = production.front();
-      if (IsNonterminal(rules, frontSym) && symbol != frontSym) {
+      if (IsNonTerminal(rules, frontSym) && symbol != frontSym) {
         ILLI.FirstSymbolOfEachProduction.insert(frontSym);
       }
     }
@@ -312,10 +318,6 @@ std::optional<Rules> ffps::BuildRules(std::string_view file,
     return std::nullopt;
   }
 
-  std::cout << "=================================\n";
-  ffps::Print(*rules, std::cout);
-  std::cout << "=================================\n";
-
   if (solveLeftRecursion) {
     SolveLeftRecursion(*rules);
   }
@@ -323,10 +325,6 @@ std::optional<Rules> ffps::BuildRules(std::string_view file,
   if (solveCommonFactorsByTheLeft) {
     SolveCommonFactorsByTheLeft(*rules);
   }
-
-  std::cout << "=================================\n";
-  ffps::Print(*rules, std::cout);
-  std::cout << "=================================\n";
 
   return rules;
 }
@@ -336,10 +334,10 @@ void ffps::Print(const Rules &rules, std::ostream &out) {
     out << rule << '\n';
     for (Production production : productions) {
       out << '\t';
-      for (std::string_view symbol : production)
-        std::cout << symbol << ' ';
+      for (std::string_view symbol : production) {
+        out << symbol << ' ';
+      }
       out << '\n';
     }
-    out << '\n';
   }
 }

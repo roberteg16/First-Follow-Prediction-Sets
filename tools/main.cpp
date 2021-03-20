@@ -17,10 +17,25 @@ int main(int argc, char *argv[]) {
     return -1;
   }
 
-  FirstGenerator firstGenerator(*rules);
-  FollowingGenerator followingGenerator(*rules, firstGenerator.get_first());
+  std::cout << "================ Rules ================\n";
+  ffps::Print(*rules, std::cout);
+  std::cout << "=======================================\n\n";
+
+  std::optional<ffps::FirstSet> firstSet = ffps::BuildFirstSet(*rules);
+  if (!firstSet) {
+    return -1;
+  }
+
+  std::cout << "================ First ================\n";
+  ffps::Print(*firstSet, std::cout);
+  std::cout << "=======================================\n";
+
+
+/*
+  FollowingGenerator followingGenerator(*rules, firstSet);
   PredictionSetGenerator predictionSetGenerator(
-      *rules, firstGenerator.get_first(), followingGenerator.get_following());
+      *rules, firstSet, followingGenerator.get_following());
+
 
   predictionSetGenerator.write_rules_to_file(
       argv[2], predictionSetGenerator.get_rules());
@@ -37,6 +52,6 @@ int main(int argc, char *argv[]) {
   std::cout << std::endl;
   std::cout << std::endl;
   predictionSetGenerator.print_prediction_set();
-
+*/
   return 0;
 }

@@ -2,6 +2,7 @@
 #define __FOLLOWING_H__
 
 #include <Common.h>
+#include <First.h>
 
 class FollowingGenerator
 {

@@ -1,134 +1,257 @@
 #include "Common.h"
 #include <First.h>
 
-int num_of_rules = 0;
-int current_num_of_rules_done = 0;
+#include <cassert>
+#include <iostream>
+#include <string_view>
 
-void FirstGenerator::init(
-    Rules &mid_rules, std::unordered_map<std::string, std::vector<int>> &index_of_rules,
-    std::unordered_map<std::string, std::vector<bool>> &production_done) {
-  for (auto &e : rules) {
-    Productions p;
+struct ProductionStatus {
+  /// Tracks whether the prod is done
+  bool Done;
+  /// Original production
+  const Production &Prod;
+  /// Current index in the original production
+  std::size_t CurrentIndex;
+  /// Current expansion of symbols for this production
+  std::set<std::string_view> CurrExpansion;
 
-    for (auto &v : e.second)
-      p.push_back({v[0]});
+  explicit ProductionStatus(const Production &prod, std::string_view sym)
+      : Done(false), Prod(prod), CurrentIndex(1), CurrExpansion({sym}) {}
+};
 
-    mid_rules.insert(make_pair(e.first, p));
-    first.insert(make_pair(e.first, std::set<std::string>()));
-    production_done.insert(
-        make_pair(e.first, std::vector<bool>(e.second.size(), false)));
-    index_of_rules.insert(make_pair(e.first, std::vector<int>(1, 0)));
-  }
-  num_of_rules = rules.size();
-}
+struct RuleStatus {
+  /// Tracks whether the rule is done
+  bool Done;
+  /// Tracks the current status of all the productions of this rule
+  std::vector<ProductionStatus> ProductionsStatus;
+};
 
-bool FirstGenerator::is_rule_done(const std::string &rule, std::set<std::string> &rule_done) {
-  return rule_done.find(rule) != rule_done.end();
-}
+using StatusOfRules = std::unordered_map<std::string_view, RuleStatus>;
 
-bool FirstGenerator::is_production_done(
-    const std::string &rule, int production_index,
-    std::unordered_map<std::string, std::vector<bool>> &production_done) {
-  return production_done.find(rule)->second[production_index];
-}
-
-std::set<std::string> FirstGenerator::first_of_symbol(
-    const std::string &rule, int production_index, const std::string &symbol, bool &done,
-    Rules &mid_rules, std::set<std::string> &rule_done,
-    std::unordered_map<std::string, std::vector<int>> &index_of_rules) {
-  // If it is terminal, mark production as done and retrun the symbol
-  if (IsTerminal(rules, symbol)) {
-    done = true;
-    return {symbol};
-  } else {
-    // If it is not terminal check if the symbol we are processing has all his
-    // productions done
-    if (is_rule_done(symbol, rule_done)) {
-      // Get his firsts
-      std::set<std::string> production = first.find(symbol)->second;
-
-      // Check if it has ε
-      if (auto it = production.find(EpsilonStr.data()); it != production.end()) {
-        // Does contain ε
-
-        // As it contains ε, we need to process the first of the next symbol
-        std::size_t next_symbol =
-            ++index_of_rules.find(symbol)->second[production_index];
-        if (next_symbol < rules.find(rule)->second[production_index].size()) {
-          // Delete ε
-          production.erase(it);
-          // Add the next symbol to or mid representation of the production so
-          // the next iteration will process the next new symbol of the
-          // production
-          mid_rules.find(rule)->second[production_index].push_back(
-              rules.find(rule)->second[production_index][next_symbol]);
-        } else {
-          // If it is the last symbol of the production, we conserve ε and mark
-          // the production has done
-          done = true;
-        }
-
-        return production;
-      } else {
-        // If it does not contains ε, then we are done
-        done = true;
+/// Halt criterium. If we are trying to obtain the first set of
+/// ourself. This generates a infinite cycle.
+static bool FirstSetOfItselfCycle(const StatusOfRules &statusOfRules) {
+  for (auto &[symbol, ruleStatus] : statusOfRules) {
+    if (ruleStatus.Done) {
+      continue;
+    }
+    for (auto &productionStatus : ruleStatus.ProductionsStatus) {
+      if (productionStatus.Done) {
+        continue;
       }
-
-      return production;
-    } else {
-      // If the rule of the symbol we are getting is not done then we return
-      // nothing do not mark the production as done, and wait to the next
-      // iteration to resolve this rule
-      return first.find(symbol)->second;
+      if (productionStatus.CurrExpansion.contains(symbol)) {
+        std::cerr << "Your gramma makes the first set of symbol '" << symbol
+                  << "' to contain itself. Not able to generate first set due"
+                  << " to infinite cycle.\n";
+        return true;
+      }
     }
   }
+  return false;
 }
 
-void FirstGenerator::get_first(
-    Rules &mid_rules, std::set<std::string> &rule_done,
-    std::unordered_map<std::string, std::vector<bool>> &production_done,
-    std::unordered_map<std::string, std::vector<int>> &index_of_rules) {
+/// Halt criterium. If we are trying to obtain the first set of
+///.another symbol, and it happens that that symbol is also trying to obtain
+/// our first set. This creates a infiniti cycle.
+static bool
+FirstSetOfAnotherFirstSetOfUsCycle(const StatusOfRules &statusOfRules) {
 
-  // While there is still one rule to be done, keep iterating
-  for (int cont = 0; cont < 100; ++cont) {
-    // Iterate over all rules
-    for (const auto &rule : mid_rules) {
-      // Only process the rules that are still waiting to be done
-      if (!is_rule_done(rule.first, rule_done)) {
-        // If all the productions are done, then the rule is done
-        bool completed_rule = true;
+  for (auto &[symbol, ruleStatus] : statusOfRules) {
+    if (ruleStatus.Done) {
+      continue;
+    }
+    for (auto &[symbol2, ruleStatus2] : statusOfRules) {
+      if (ruleStatus.Done || symbol == symbol2) {
+        continue;
+      }
 
-        // Iterate over all productions of each rules
-        for (std::size_t i = 0; i < rule.second.size(); ++i) {
-          // Only process the remaining productions
-          if (!is_production_done(rule.first, i, production_done)) {
-            // Get next symbol of production to process
-            std::string symbol(rule.second[i][rule.second[i].size() - 1]);
-            bool done = false;
-            std::set<std::string> first_of =
-                first_of_symbol(rule.first, i, symbol, done, mid_rules,
-                                rule_done, index_of_rules);
+      for (auto &productionStatus : ruleStatus2.ProductionsStatus) {
+        if (productionStatus.Done) {
+          continue;
+        }
 
-            // If all productions are done, then the rule is done
-            completed_rule &= done;
+        if (productionStatus.CurrExpansion.contains(symbol)) {
+          for (auto &productionStatus : ruleStatus.ProductionsStatus) {
+            if (productionStatus.Done) {
+              continue;
+            }
 
-            // If the production is done, the mark it as finished
-            if (done)
-              production_done.find(rule.first)->second[i] = true;
-
-            // Append the news symbols of the production to the already
-            // existings rules
-            first.find(rule.first)
-                ->second.insert(first_of.begin(), first_of.end());
+            if (productionStatus.CurrExpansion.contains(symbol2)) {
+              std::cerr << "Your gramma contains a infinite cycle on rules: '"
+                        << symbol << "' and '" << symbol2
+                        << "'. Not able to generate first set due"
+                        << " to infinite cycle\n";
+              return true;
+            }
           }
         }
-        // If rule is completed, mark it as finish and increment the counter of
-        // the rules already done
-        if (completed_rule) {
-          rule_done.insert(rule.first);
-          current_num_of_rules_done++;
-        }
       }
     }
+  }
+  return false;
+}
+
+static bool AreAllFirstDone(const StatusOfRules &statusOfRules) {
+  for (auto &[symbol, ruleStatus] : statusOfRules) {
+    if (!ruleStatus.Done) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+static bool AreAllTerminal(const Rules &rules, ProductionStatus &prodStatus) {
+  for (std::string_view sym : prodStatus.CurrExpansion) {
+    // Skip terminals, we are interested in resolving non terminals
+    if (!IsTerminal(rules, sym.data())) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/// Returns a bool indicating whether we added a new symbol to the production.
+/// In case that there is a epsilon and there are still symbols to be added,
+/// then we need more iterations, so we return true. True otherwise
+static bool AddNextSymbolInProdIfContainsEpsilon(ProductionStatus &prodStatus) {
+  // Check if it has epsilon
+  if (prodStatus.CurrExpansion.contains(EpsilonStr)) {
+    // Contains epsilon, check if there are remaining symbols to add in the
+    // production
+    if (prodStatus.CurrentIndex < prodStatus.Prod.size()) {
+      // Remove epsilon, we are going to append the next symbol
+      prodStatus.CurrExpansion.erase(EpsilonStr);
+
+      // Add new symbol to expand the firsts
+      std::string_view newSymbol = prodStatus.Prod[prodStatus.CurrentIndex];
+      prodStatus.CurrExpansion.insert(newSymbol);
+
+      // Increment so next time we'll check for the next symbol
+      prodStatus.CurrentIndex++;
+
+      // Symbol added
+      return true;
+    }
+  }
+
+  // Not symbol added
+  return false;
+}
+
+static bool TryResolveProd(const Rules &rules, StatusOfRules &rulesStatus,
+                           ProductionStatus &prodStatus) {
+
+  if (AreAllTerminal(rules, prodStatus)) {
+    // If added symbol, then it is not done
+    return !AddNextSymbolInProdIfContainsEpsilon(prodStatus);
+  }
+
+  // Not all are terminal, so try to insert the symbols from the non-terminal
+  // if it has the rule done
+  for (std::string_view sym : prodStatus.CurrExpansion) {
+
+    // If the production is not done, then we can't insert its symbols, skip
+    if (IsTerminal(rules, sym.data()) || !rulesStatus[sym].Done) {
+      continue;
+    }
+
+    // The productions is done for the non terminal, remove it
+    prodStatus.CurrExpansion.erase(sym);
+
+    // And add new symbols from the rule to expand the firsts
+    for (ProductionStatus &prods : rulesStatus[sym].ProductionsStatus) {
+      for (std::string_view finalSymbol : prods.CurrExpansion) {
+        prodStatus.CurrExpansion.insert(finalSymbol);
+      }
+    }
+
+    break;
+  }
+
+  // Prod not done
+  return false;
+}
+
+/// Returns true when it accomplished to resolve the whole Rule
+static bool TryResolveRule(const Rules &rules,
+                           std::vector<ProductionStatus> &statusByProd,
+                           StatusOfRules &rulesStatus) {
+  bool allProdDone = true;
+  for (ProductionStatus &prodStatus : statusByProd) {
+    // Production done, skip
+    if (prodStatus.Done) {
+      continue;
+    }
+
+    prodStatus.Done = TryResolveProd(rules, rulesStatus, prodStatus);
+
+    // Accumulate done productions
+    allProdDone &= prodStatus.Done;
+  }
+
+  return allProdDone;
+}
+
+static StatusOfRules InitializeStatusTrackerOfRules(const Rules &rules) {
+  StatusOfRules initData;
+  for (auto &[symbol, prods] : rules) {
+    for (const Production &prod : prods) {
+      initData[symbol].ProductionsStatus.emplace_back(prod, prod.front());
+    }
+  }
+
+  return initData;
+}
+
+static ffps::FirstSet BuildFirstSet(const StatusOfRules &statusOfRules) {
+  ffps::FirstSet result;
+
+  for (auto &[symbol, ruleStatus] : statusOfRules) {
+    assert(ruleStatus.Done && "Rule not done!");
+    for (const ProductionStatus &prodStatus : ruleStatus.ProductionsStatus) {
+      assert(prodStatus.Done && "Production not done!");
+      for (std::string_view symbolFirstProd : prodStatus.CurrExpansion) {
+        result[symbol.data()].emplace(symbolFirstProd);
+      }
+    }
+  }
+
+  return result;
+}
+
+std::optional<ffps::FirstSet> ffps::BuildFirstSet(const Rules &rules) {
+  // Initialize first tracking data
+  StatusOfRules rulesStatus = InitializeStatusTrackerOfRules(rules);
+
+  while (!AreAllFirstDone(rulesStatus)) {
+    /// If a cycle is formed, stop the process
+    if (FirstSetOfAnotherFirstSetOfUsCycle(rulesStatus) ||
+        FirstSetOfItselfCycle(rulesStatus)) {
+      return {};
+    }
+
+    for (auto &[symbol, ruleStatus] : rulesStatus) {
+      // Rule done, skip
+      if (ruleStatus.Done) {
+        continue;
+      }
+
+      // Try resolve our current rule
+      ruleStatus.Done =
+          TryResolveRule(rules, ruleStatus.ProductionsStatus, rulesStatus);
+    }
+  }
+
+  return BuildFirstSet(rulesStatus);
+}
+
+void ffps::Print(const FirstSet &firstSet, std::ostream &out) {
+  for (auto &[symbol, firsts] : firstSet) {
+    out << symbol << "\n\t";
+    for (auto &sym : firsts) {
+      out << sym << " ";
+    }
+    out << "\n";
   }
 }
