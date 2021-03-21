@@ -3,57 +3,20 @@
 
 #include <Common.h>
 #include <First.h>
+#include <Rules.h>
 
-class FollowingGenerator
-{
-  public:
-    FollowingGenerator();
-    FollowingGenerator(Rules& rules, Result& first) : rules(rules), first(first)
-    {
-      // Init data contains:
-      // Given a rule, its list of following symbols of each production
-      // The list it's compossed of the rule of the production and then the list of the symbols
-      // that remain at the right side of the rule we are getting the following.
+namespace ffps {
 
-      // Rule_A
-      //      -> Rule_of_the_production [list_of_symbols_at_the_right_side]
-      //      -> Rule_of_the_production [list_of_symbols_at_the_right_side]
-      InitDataFollowing init_data;
+using FollowingSet = std::unordered_map<std::string, std::set<std::string>>;
 
-      // Following done
-      std::set<std::string> following_done;
+constexpr std::string_view StartStr{"Start"};
 
-      // Init data
-      init(init_data, following_done);
-      get_following(init_data, following_done);
-    }
+/// Builds the FirstSet from a given set of Rules.
+std::optional<FollowingSet> BuildFollowingSet(const Rules &rules,
+                                              const FirstSet &firstSet);
 
-    Result& get_following() { return following; }
+void Print(const FollowingSet &firstSet, std::ostream &out);
 
-    template <typename T = std::ostream>
-    static void print_following(const Result &following, T &out = std::cout) {
-      for(auto e : following)
-      {
-        out << e.first << '\n';
-        out << '\t';
-        for(auto& v : e.second)
-        {
-            out << v << ' ';
-        }
-        out << '\n';
-      }
-    }
+} // namespace ffps
 
-  private:
-    void init(InitDataFollowing&, std::set<std::string>&);
-    void get_following(InitDataFollowing&, std::set<std::string>&);
-    bool is_rule_done(const std::string& rule, std::set<std::string>& following_d);
-    std::set<std::string> first_of_production(std::string&, Production&, Result&, bool&, std::set<std::string>&);
-
-    Rules rules;
-    Result first;
-
-    //Result of following
-    Result following;
-};
 #endif

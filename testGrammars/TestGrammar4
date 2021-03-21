@@ -1,6 +1,6 @@
-S -> A C B
-S -> C b b
-S -> B a
+Start -> A C B
+Start -> C b b
+Start -> B a
 
 A -> d a
 A -> B C

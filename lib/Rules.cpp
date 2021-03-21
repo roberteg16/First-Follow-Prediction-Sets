@@ -5,6 +5,8 @@
 #include <span>
 #include <string_view>
 
+using namespace ffps;
+
 static std::string GetLine(std::ifstream &ifile) {
   std::string line;
   std::getline(ifile, line);

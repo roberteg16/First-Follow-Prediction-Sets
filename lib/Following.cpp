@@ -1,149 +1,212 @@
 #include <Following.h>
 
-void FollowingGenerator::init(InitDataFollowing &init_data,
-                              std::set<std::string> &following_done) {
-  // Initialize following and init_data with empty values
-  for (auto &rule : rules) {
-    following.insert(make_pair(rule.first, std::set<std::string>()));
-    init_data.insert(make_pair(
-        rule.first,
-        std::vector<std::pair<std::string, std::vector<std::string>>>()));
+#include "CicleDetector.h"
+#include "StatusOfRule.h"
+#include <cassert>
+
+using namespace ffps;
+
+namespace {
+struct ProductionStatus {
+  /// Tracks whether the prod is done
+  bool Done;
+  /// Expansion of symbols for this production
+  std::set<std::string_view> Expansion;
+  /// The following symbol that is to be expanded
+  std::string_view Following;
+
+  explicit ProductionStatus(std::string_view following)
+      : Done(false), Expansion(), Following(following) {}
+  explicit ProductionStatus(std::set<std::string_view> syms,
+                            std::string_view following)
+      : Done(false), Expansion(syms), Following(following) {}
+};
+
+} // namespace
+
+static bool
+AreAllFollowingDone(const StatusOfRules<ProductionStatus> &statusOfRules) {
+  for (auto &[symbol, ruleStatus] : statusOfRules) {
+    if (!ruleStatus.Done) {
+      return false;
+    }
   }
 
-  // Insert $ to the first symbol of the grammar
-  following.find(StartStr.data())->second.insert("$");
-  following_done.insert(StartStr.data());
+  return true;
+}
 
-  // Fill init_data
-  for (auto &rule : rules) {
-    for (auto &v : rule.second) {
-      for (std::size_t i = 0; i < v.size(); ++i) {
-        if (IsNonterminal(rules, v[i])) {
-          std::pair<std::string, std::vector<std::string>> pair;
-          pair.first = rule.first;
+static bool TryResolveProd(StatusOfRules<ProductionStatus> &rulesStatus,
+                           ProductionStatus &prodStatus) {
 
-          int size = (v.size() - i) - 1;
-          if (size == 0) {
-            pair.second.push_back(EpsilonStr.data());
-          } else {
-            for (std::size_t j = i + 1; j < v.size(); ++j)
-              pair.second.push_back(v[j]);
+  RuleStatus<ProductionStatus> &ruleStatus = rulesStatus[prodStatus.Following];
+  if (!ruleStatus.Done) {
+    return false;
+  }
+
+  // Insert all symbols of following
+  for (ProductionStatus &prods : ruleStatus.ProductionsStatus) {
+    prodStatus.Expansion.insert(prods.Expansion.begin(), prods.Expansion.end());
+  }
+
+  return true;
+}
+
+/// Returns true when it accomplished to resolve the whole Rule
+static bool TryResolveRule(std::vector<ProductionStatus> &statusByProd,
+                           StatusOfRules<ProductionStatus> &rulesStatus) {
+  bool allProdDone = true;
+  for (ProductionStatus &prodStatus : statusByProd) {
+    // Production done, skip
+    if (prodStatus.Done) {
+      continue;
+    }
+
+    prodStatus.Done = TryResolveProd(rulesStatus, prodStatus);
+
+    // Accumulate done productions
+    allProdDone &= prodStatus.Done;
+  }
+
+  return allProdDone;
+}
+
+static StatusOfRules<ProductionStatus>
+InitializeStatusTrackerOfRules(const Rules &rules, const FirstSet &firstSet) {
+  StatusOfRules<ProductionStatus> initData;
+
+  // Start symbol is always '$'. Mark it as done from the beginning
+  RuleStatus<ProductionStatus> &startRule = initData[StartStr];
+  std::set<std::string_view> set{"$"};
+  startRule.ProductionsStatus.emplace_back(set, "");
+  startRule.ProductionsStatus.back().Done = true;
+
+  // Iterate over all rules. Perform cross product to check whether a symbol
+  // may appear or not in the rest of rules
+  for (auto &[symbol, _] : rules) {
+    for (auto &[symbolOfRuleOfCurrentProd, prods] : rules) {
+      for (const Production &prod : prods) {
+
+        // Check the curren offset from the end of the symbol we are looking
+        // for to build the following
+        std::size_t offsetFromEnd =
+            std::distance(std::ranges::find(prod, symbol), prod.end());
+
+        // Not symbol not in this production, continue
+        if (!offsetFromEnd) {
+          continue;
+        }
+
+        // The symbol is the last one of the production
+        if (offsetFromEnd == 1) {
+          // Avoid getting following of ourself
+          if (symbol == symbolOfRuleOfCurrentProd) {
+            continue;
           }
-          init_data.find(v[i])->second.push_back(pair);
+
+          // Get the symbol of the rule of the current production has the
+          // following
+          initData[symbol].ProductionsStatus.emplace_back(
+              symbolOfRuleOfCurrentProd);
+          continue;
+        }
+
+        // Symbol is not the last one of the production, recover the next one.
+        // We'll recover the following symbols from it
+        auto &followSymbol = prod[(prod.size() - offsetFromEnd) + 1];
+
+        // If it is terminal, add the symbol and mark the prod as done
+        if (IsTerminal(rules, followSymbol)) {
+          ProductionStatus &prodRule =
+              initData[symbol].ProductionsStatus.emplace_back(
+                  std::set<std::string_view>{followSymbol}, "");
+          prodRule.Done = true;
+          continue;
+        }
+
+        // Not terminal.
+        // Recover first set of the symbol
+        auto firstsIt = firstSet.find(followSymbol);
+        assert(firstsIt != firstSet.end());
+
+        // Local copy of it in case we need to delete epsilon
+        const std::set<std::string> &firstSet = firstsIt->second;
+        std::set<std::string_view> copy;
+        for (std::string_view sym : firstSet) {
+          copy.insert(sym);
+        }
+
+        if (firstSet.contains(EpsilonStr.data())) {
+          // It contains epsilon, remove it, add the symbols and mark to get
+          // the following set of the rule of the current production where
+          // we appeared
+          copy.erase(EpsilonStr);
+          initData[symbol].ProductionsStatus.emplace_back(
+              copy, symbolOfRuleOfCurrentProd);
+        } else {
+          // Not epsilon, add the symbols and mark the prod as done
+          ProductionStatus &prodRule =
+              initData[symbol].ProductionsStatus.emplace_back(copy, "");
+          prodRule.Done = true;
         }
       }
     }
   }
 
-  // If there is a rule that does not have following, mark it as done
-  for (auto &e : init_data) {
-    if (e.second.size() == 0) {
-      following_done.insert(e.first);
-    }
-  }
+  return initData;
 }
 
-// Check if a rule is done
-bool FollowingGenerator::is_rule_done(const std::string &rule,
-                                      std::set<std::string> &following_d) {
-  return following_d.find(rule) != following_d.end();
-}
+static FollowingSet
+BuildFollowingSet(const StatusOfRules<ProductionStatus> &statusOfRules) {
+  FollowingSet result;
 
-std::set<std::string> FollowingGenerator::first_of_production(
-    std::string &rule_symbol, Production &prod, Result &first, bool &done,
-    std::set<std::string> &following_done) {
-  std::set<std::string> set_to_return;
-  std::size_t i = 0;
-  // Go over all the symbols of the production
-  while (i < prod.size() && !done) {
-    auto &symbol = prod[i];
-
-    // Nonterminal
-    if (auto it = first.find(symbol); it != first.end()) {
-
-      auto &set = it->second;
-      // Insert all first of symbol
-      set_to_return.insert(set.begin(), set.end());
-
-      if (auto ep = set_to_return.find(EpsilonStr.data()); ep != set_to_return.end()) {
-        // Does contain EpsilonStr.data()
-        // Delete EpsilonStr.data()
-        set_to_return.erase(ep);
-      } else {
-        // Does not contain EpsilonStr.data()
-        // If it does not contain EpsilonStr.data() then, we are done with first
-        done = true;
-        break;
+  for (auto &[symbol, ruleStatus] : statusOfRules) {
+    assert(ruleStatus.Done && "Rule not done!");
+    for (const ProductionStatus &prodStatus : ruleStatus.ProductionsStatus) {
+      assert(prodStatus.Done && "Production not done!");
+      for (std::string_view symbolFirstProd : prodStatus.Expansion) {
+        result[symbol.data()].emplace(symbolFirstProd);
       }
-    }
-    // Terminal
-    else {
-      if (symbol == EpsilonStr.data()) {
-        // do nothing and keep iteration
-      } else {
-        // If it is not EpsilonStr.data() then, we are done with first
-        done = true;
-        set_to_return.insert(symbol);
-        break;
-      }
-    }
-
-    i++;
-    // If we arrive at the end of the production that means that we have to
-    // add the following of the rule of the production we are processing
-    if (i == prod.size() && !done) {
-      // Check if the following if the rule we are doing the production is done
-      if (auto it = following_done.find(rule_symbol);
-          it != following_done.end()) {
-        // Following of the rule is done so we insert the following and mark it
-        // as done
-        done = true;
-      }
-      auto it2 = following.find(rule_symbol);
-      set_to_return.insert(it2->second.begin(), it2->second.end());
     }
   }
-  return set_to_return;
+
+  return result;
 }
 
-void FollowingGenerator::get_following(InitDataFollowing &init_data,
-                                       std::set<std::string> &following_done) {
-  int total_rules_to_be_done = rules.size();
-  int rules_done = following_done.size();
-  int prev = -1;
-  int iterations = 0;
+static bool RulesContainsStartSymbol(const Rules &rules) {
+  return rules.contains(StartStr.data());
+}
 
-  constexpr std::size_t MaxIterations = 1500;
-  // Iterate till all the rules are done
-  while (rules_done < total_rules_to_be_done && iterations != MaxIterations) {
-    prev = rules_done;
+std::optional<FollowingSet> ffps::BuildFollowingSet(const Rules &rules,
+                                                    const FirstSet &firstSet) {
 
-    // Iterate over all rules
-    for (auto &element : init_data) {
-      // Check if the rule is done to avoid reprocess it
-      if (!is_rule_done(element.first, following_done)) {
-        bool done_rule = true;
-        // Iterate over all the productions
-        for (auto &follow : element.second) {
-          bool done = false;
-          // Get the followings
-          auto set = first_of_production(follow.first, follow.second, first,
-                                         done, following_done);
-          // Check if done rule
-          done_rule &= done;
-          // Insert done production
-          following.find(element.first)->second.insert(set.begin(), set.end());
-        }
+  if (!RulesContainsStartSymbol(rules)) {
+    std::cerr << "The grammar does not contain a 'Start' symbol. Not able to "
+                 "generate the following set.\n";
+    return {};
+  }
 
-        // If all productions are done, then mark the rule as done
-        if (done_rule)
-          following_done.insert(element.first);
-      }
+  // Initialize first tracking data
+  StatusOfRules<ProductionStatus> rulesStatus =
+      InitializeStatusTrackerOfRules(rules, firstSet);
+
+  while (!AreAllFollowingDone(rulesStatus)) {
+    /// If a cycle is formed, stop the process
+    if (FirstSetOfAnotherFirstSetOfUsCycle(rulesStatus) ||
+        FirstSetOfItselfCycle(rulesStatus)) {
+      return {};
     }
 
-    // After a iteration get the new followings done
-    rules_done = following_done.size();
+    for (auto &[symbol, ruleStatus] : rulesStatus) {
+      // Rule done, skip
+      if (ruleStatus.Done) {
+        continue;
+      }
 
-    iterations = prev == rules_done ? iterations + 1 : 0;
+      // Try resolve our current rule
+      ruleStatus.Done =
+          TryResolveRule(ruleStatus.ProductionsStatus, rulesStatus);
+    }
   }
+
+  return ::BuildFollowingSet(rulesStatus);
 }
