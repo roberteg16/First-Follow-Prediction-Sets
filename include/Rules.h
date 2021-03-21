@@ -2,8 +2,6 @@
 #define __RULES_H__
 
 #include <Common.h>
-#include <algorithm>
-#include <climits>
 #include <string_view>
 
 namespace ffps {

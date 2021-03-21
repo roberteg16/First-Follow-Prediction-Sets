@@ -2,6 +2,7 @@
 
 #include "CicleDetector.h"
 #include "StatusOfRule.h"
+#include <algorithm>
 #include <cassert>
 
 using namespace ffps;
@@ -15,11 +16,11 @@ struct ProductionStatus {
   /// The following symbol that is to be expanded
   std::string_view Following;
 
-  explicit ProductionStatus(std::string_view following)
-      : Done(false), Expansion(), Following(following) {}
+  explicit ProductionStatus(std::string_view following, bool done)
+      : Done(done), Expansion(), Following(following) {}
   explicit ProductionStatus(std::set<std::string_view> syms,
-                            std::string_view following)
-      : Done(false), Expansion(syms), Following(following) {}
+                            std::string_view following, bool done)
+      : Done(done), Expansion(syms), Following(following) {}
 };
 
 } // namespace
@@ -70,15 +71,47 @@ static bool TryResolveRule(std::vector<ProductionStatus> &statusByProd,
   return allProdDone;
 }
 
+static std::set<std::string_view>
+RecoverFirstOfSubProduction(const Rules &rules, const FirstSet &firstSet,
+                            const Production &prod, std::size_t &pos) {
+  std::set<std::string_view> result;
+
+  if (pos == prod.size()) {
+    return {};
+  }
+
+  do {
+    result.erase(EpsilonStr);
+
+    const std::string &symbol = prod[pos++];
+    if (IsTerminal(rules, symbol)) {
+      result.insert(symbol);
+    } else {
+      // Not terminal.
+      // Recover first set of the symbol
+      auto firstsIt = firstSet.find(symbol);
+      assert(firstsIt != firstSet.end());
+
+      // Local firstSetCopy of it in case we need to delete epsilon
+      const std::set<std::string> &firstSet = firstsIt->second;
+      for (std::string_view sym : firstSet) {
+        result.insert(sym);
+      }
+    }
+  } while (result.contains(EpsilonStr) && pos < prod.size());
+
+  return result;
+}
+
 static StatusOfRules<ProductionStatus>
 InitializeStatusTrackerOfRules(const Rules &rules, const FirstSet &firstSet) {
   StatusOfRules<ProductionStatus> initData;
 
   // Start symbol is always '$'. Mark it as done from the beginning
   RuleStatus<ProductionStatus> &startRule = initData[StartStr];
-  std::set<std::string_view> set{"$"};
-  startRule.ProductionsStatus.emplace_back(set, "");
-  startRule.ProductionsStatus.back().Done = true;
+  startRule.ProductionsStatus.emplace_back(std::set<std::string_view>{"$"},
+                                           /*followingSymbol*/ "",
+                                           /*done*/ true);
 
   // Iterate over all rules. Perform cross product to check whether a symbol
   // may appear or not in the rest of rules
@@ -88,65 +121,30 @@ InitializeStatusTrackerOfRules(const Rules &rules, const FirstSet &firstSet) {
 
         // Check the curren offset from the end of the symbol we are looking
         // for to build the following
-        std::size_t offsetFromEnd =
-            std::distance(std::ranges::find(prod, symbol), prod.end());
-
+        auto it = std::ranges::find(prod, symbol);
         // Not symbol not in this production, continue
-        if (!offsetFromEnd) {
+        if (it == prod.end()) {
           continue;
         }
 
-        // The symbol is the last one of the production
-        if (offsetFromEnd == 1) {
-          // Avoid getting following of ourself
-          if (symbol == symbolOfRuleOfCurrentProd) {
-            continue;
-          }
+        std::size_t pos = std::distance(prod.begin(), it);
+        std::set<std::string_view> firstsOfProd =
+            RecoverFirstOfSubProduction(rules, firstSet, prod, ++pos);
 
-          // Get the symbol of the rule of the current production has the
-          // following
-          initData[symbol].ProductionsStatus.emplace_back(
-              symbolOfRuleOfCurrentProd);
-          continue;
-        }
-
-        // Symbol is not the last one of the production, recover the next one.
-        // We'll recover the following symbols from it
-        auto &followSymbol = prod[(prod.size() - offsetFromEnd) + 1];
-
-        // If it is terminal, add the symbol and mark the prod as done
-        if (IsTerminal(rules, followSymbol)) {
-          ProductionStatus &prodRule =
-              initData[symbol].ProductionsStatus.emplace_back(
-                  std::set<std::string_view>{followSymbol}, "");
-          prodRule.Done = true;
-          continue;
-        }
-
-        // Not terminal.
-        // Recover first set of the symbol
-        auto firstsIt = firstSet.find(followSymbol);
-        assert(firstsIt != firstSet.end());
-
-        // Local copy of it in case we need to delete epsilon
-        const std::set<std::string> &firstSet = firstsIt->second;
-        std::set<std::string_view> copy;
-        for (std::string_view sym : firstSet) {
-          copy.insert(sym);
-        }
-
-        if (firstSet.contains(EpsilonStr.data())) {
-          // It contains epsilon, remove it, add the symbols and mark to get
+        if (firstsOfProd.contains(EpsilonStr.data()) || pos == prod.size()) {
+          // It contains epsilon, that means that while getting firsts, we ended
+          // at the last symbol. Remove it, add the symbols and mark to get
           // the following set of the rule of the current production where
           // we appeared
-          copy.erase(EpsilonStr);
+          firstsOfProd.erase(EpsilonStr);
           initData[symbol].ProductionsStatus.emplace_back(
-              copy, symbolOfRuleOfCurrentProd);
+              std::move(firstsOfProd), symbolOfRuleOfCurrentProd,
+              /*done*/ false);
         } else {
-          // Not epsilon, add the symbols and mark the prod as done
-          ProductionStatus &prodRule =
-              initData[symbol].ProductionsStatus.emplace_back(copy, "");
-          prodRule.Done = true;
+          // Not epsilon, we did not reach the end, add the symbols and mark the
+          // prod as done
+          initData[symbol].ProductionsStatus.emplace_back(
+              std::move(firstsOfProd), /*followingSymbol*/ "", /*done*/ true);
         }
       }
     }
@@ -205,8 +203,19 @@ std::optional<FollowingSet> ffps::BuildFollowingSet(const Rules &rules,
       // Try resolve our current rule
       ruleStatus.Done =
           TryResolveRule(ruleStatus.ProductionsStatus, rulesStatus);
-    }
+    } /// Builds the FirstSet from a given set of Rules.
+    std::optional<FollowingSet> BuildFollowingSet(const Rules &rules,
+                                                  const FirstSet &firstSet);
   }
 
   return ::BuildFollowingSet(rulesStatus);
+}
+
+std::optional<FollowingSet> BuildFollowingSet(const Rules &rules) {
+  std::optional<ffps::FirstSet> firstSet = ffps::BuildFirstSet(rules);
+  if (!firstSet) {
+    return {};
+  }
+
+  return BuildFollowingSet(rules, *firstSet);
 }

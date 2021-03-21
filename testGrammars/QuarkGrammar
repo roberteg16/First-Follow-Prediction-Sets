@@ -7,7 +7,7 @@ Declaration -> Declaration_var
 Declaration -> Declaration_func
 
 Declaration_var_brief -> Type identifier
-Declaration_var -> Declaration_var_brief semicolon
+Declaration_var -> Declaration_var_brief ;
 
 Declaration_func -> identifier doubledot List_of_vars arrow Type Block
 Declaration_func -> identifier doubledot List_of_vars Block

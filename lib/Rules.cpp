@@ -1,8 +1,13 @@
 #include <Rules.h>
 
 #include <Common.h>
+#include <algorithm>
 #include <cassert>
+#include <fstream>
+#include <iostream>
+#include <set>
 #include <span>
+#include <string>
 #include <string_view>
 
 using namespace ffps;

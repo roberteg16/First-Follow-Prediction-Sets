@@ -11,7 +11,10 @@ using FollowingSet = std::unordered_map<std::string, std::set<std::string>>;
 
 constexpr std::string_view StartStr{"Start"};
 
-/// Builds the FirstSet from a given set of Rules.
+/// Builds the Following from a given set of Rules
+std::optional<FollowingSet> BuildFollowingSet(const Rules &rules);
+
+/// Builds the FirstSet from a given set of Rules, and the set of Firsts
 std::optional<FollowingSet> BuildFollowingSet(const Rules &rules,
                                               const FirstSet &firstSet);
 

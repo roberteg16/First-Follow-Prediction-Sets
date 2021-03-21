@@ -38,7 +38,17 @@ int main(int argc, char *argv[]) {
 
   std::cout << "============== Following ==============\n";
   ffps::Print(*followingSet, std::cout);
-  std::cout << "=======================================\n";
+  std::cout << "=======================================\n\n";
+
+  std::optional<ffps::PredictionSet> predictionSet =
+      ffps::BuildPredictionSet(*rules);
+  if (!predictionSet) {
+    return -1;
+  }
+
+  std::cout << "============== Prediction =============\n";
+  ffps::Print(*predictionSet, std::cout);
+  std::cout << "=======================================\n\n";
 
   return 0;
 }
