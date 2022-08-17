@@ -11,7 +11,7 @@ using namespace ffps;
 namespace {
 struct ProductionStatus {
   /// Tracks whether the prod is done
-  bool Done;
+  bool IsDone;
   /// Original production
   const Production &Prod;
   /// Current index in the original production
@@ -20,7 +20,7 @@ struct ProductionStatus {
   std::set<std::string_view> Expansion;
 
   explicit ProductionStatus(const Production &prod, std::string_view sym)
-      : Done(false), Prod(prod), CurrentIndex(1), Expansion({sym}) {}
+      : IsDone(false), Prod(prod), CurrentIndex(1), Expansion({sym}) {}
 };
 
 } // namespace
@@ -106,14 +106,14 @@ static bool TryResolveRule(const Rules &rules,
   bool allProdDone = true;
   for (ProductionStatus &prodStatus : statusByProd) {
     // Production done, skip
-    if (prodStatus.Done) {
+    if (prodStatus.IsDone) {
       continue;
     }
 
-    prodStatus.Done = TryResolveProd(rules, rulesStatus, prodStatus);
+    prodStatus.IsDone = TryResolveProd(rules, rulesStatus, prodStatus);
 
     // Accumulate done productions
-    allProdDone &= prodStatus.Done;
+    allProdDone &= prodStatus.IsDone;
   }
 
   return allProdDone;
@@ -138,7 +138,7 @@ BuildFirstSet(const StatusOfRules<ProductionStatus> &statusOfRules) {
   for (auto &[symbol, ruleStatus] : statusOfRules) {
     assert(ruleStatus.Done && "Rule not done!");
     for (const ProductionStatus &prodStatus : ruleStatus.ProductionsStatus) {
-      assert(prodStatus.Done && "Production not done!");
+      assert(prodStatus.IsDone && "Production not done!");
       for (std::string_view symbolFirstProd : prodStatus.Expansion) {
         result[symbol.data()].emplace(symbolFirstProd);
       }

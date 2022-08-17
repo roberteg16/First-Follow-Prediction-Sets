@@ -11,24 +11,25 @@ using namespace ffps;
 namespace {
 struct ProductionStatus {
   /// Tracks whether the prod is done
-  bool Done;
+  bool IsDone;
   /// Expansion of symbols for this production
   std::set<std::string_view> Expansion;
   /// The following symbol that is to be expanded
   std::string_view Following;
 
   explicit ProductionStatus(std::string_view following, bool done)
-      : Done(done), Expansion(), Following(following) {}
-  explicit ProductionStatus(std::set<std::string_view> syms,
+      : IsDone(done), Expansion(), Following(following) {}
+  explicit ProductionStatus(std::set<std::string_view> expansions,
                             std::string_view following, bool done)
-      : Done(done), Expansion(syms), Following(following) {}
+      : IsDone(done), Expansion(expansions), Following(following) {}
 };
 
 } // namespace
 
 static bool
 AreAllFollowingDone(const StatusOfRules<ProductionStatus> &statusOfRules) {
-  return std::ranges::all_of(statusOfRules, [](auto &pair){ return pair.second.Done; });
+  return std::ranges::all_of(statusOfRules,
+                             [](auto &pair) { return pair.second.Done; });
 }
 
 static bool TryResolveProd(StatusOfRules<ProductionStatus> &rulesStatus,
@@ -53,14 +54,14 @@ static bool TryResolveRule(std::vector<ProductionStatus> &statusByProd,
   bool allProdDone = true;
   for (ProductionStatus &prodStatus : statusByProd) {
     // Production done, skip
-    if (prodStatus.Done) {
+    if (prodStatus.IsDone) {
       continue;
     }
 
-    prodStatus.Done = TryResolveProd(rulesStatus, prodStatus);
+    prodStatus.IsDone = TryResolveProd(rulesStatus, prodStatus);
 
     // Accumulate done productions
-    allProdDone &= prodStatus.Done;
+    allProdDone &= prodStatus.IsDone;
   }
 
   return allProdDone;
@@ -155,7 +156,7 @@ BuildFollowingSet(const StatusOfRules<ProductionStatus> &statusOfRules) {
   for (auto &[symbol, ruleStatus] : statusOfRules) {
     assert(ruleStatus.Done && "Rule not done!");
     for (const ProductionStatus &prodStatus : ruleStatus.ProductionsStatus) {
-      assert(prodStatus.Done && "Production not done!");
+      assert(prodStatus.IsDone && "Production not done!");
       for (std::string_view symbolFirstProd : prodStatus.Expansion) {
         result[symbol.data()].emplace(symbolFirstProd);
       }

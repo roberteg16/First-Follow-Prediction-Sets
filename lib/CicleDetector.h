@@ -15,7 +15,7 @@ FirstSetOfItselfCycle(const StatusOfRules<ProductionStatus_t> &statusOfRules) {
       continue;
     }
     for (auto &productionStatus : ruleStatus.ProductionsStatus) {
-      if (productionStatus.Done) {
+      if (productionStatus.IsDone) {
         continue;
       }
       if (productionStatus.Expansion.contains(symbol)) {
@@ -46,13 +46,13 @@ static bool FirstSetOfAnotherFirstSetOfUsCycle(
       }
 
       for (auto &productionStatus : ruleStatus2.ProductionsStatus) {
-        if (productionStatus.Done) {
+        if (productionStatus.IsDone) {
           continue;
         }
 
         if (productionStatus.Expansion.contains(symbol)) {
           for (auto &productionStatus : ruleStatus.ProductionsStatus) {
-            if (productionStatus.Done) {
+            if (productionStatus.IsDone) {
               continue;
             }
 
