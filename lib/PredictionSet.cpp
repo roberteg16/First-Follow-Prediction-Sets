@@ -1,5 +1,6 @@
 #include <PredictionSet.h>
 
+#include <optional>
 #include <cassert>
 #include <string_view>
 
