@@ -2,6 +2,8 @@
 
 #include "CicleDetector.h"
 #include "StatusOfRule.h"
+
+#include <algorithm>
 #include <cassert>
 
 using namespace ffps;
@@ -25,23 +27,14 @@ struct ProductionStatus {
 
 static bool
 AreAllFirstDone(const StatusOfRules<ProductionStatus> &statusOfRules) {
-  for (auto &[symbol, ruleStatus] : statusOfRules) {
-    if (!ruleStatus.Done) {
-      return false;
-    }
-  }
-
-  return true;
+  return std::ranges::all_of(statusOfRules,
+                             [](auto &pair) { return pair.second.Done; });
 }
 
 static bool AreAllTerminal(const Rules &rules, ProductionStatus &prodStatus) {
-  for (std::string_view sym : prodStatus.Expansion) {
-    // Skip terminals, we are interested in resolving non terminals
-    if (!IsTerminal(rules, sym.data())) {
-      return false;
-    }
-  }
-  return true;
+  return std::ranges::all_of(prodStatus.Expansion, [&](std::string_view sym) {
+    return IsTerminal(rules, sym.data());
+  });
 }
 
 /// Returns a bool indicating whether we added a new symbol to the production.

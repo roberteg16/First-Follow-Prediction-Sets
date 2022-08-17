@@ -2,6 +2,7 @@
 
 #include "CicleDetector.h"
 #include "StatusOfRule.h"
+
 #include <algorithm>
 #include <cassert>
 
@@ -27,13 +28,7 @@ struct ProductionStatus {
 
 static bool
 AreAllFollowingDone(const StatusOfRules<ProductionStatus> &statusOfRules) {
-  for (auto &[symbol, ruleStatus] : statusOfRules) {
-    if (!ruleStatus.Done) {
-      return false;
-    }
-  }
-
-  return true;
+  return std::ranges::all_of(statusOfRules, [](auto &pair){ return pair.second.Done; });
 }
 
 static bool TryResolveProd(StatusOfRules<ProductionStatus> &rulesStatus,
