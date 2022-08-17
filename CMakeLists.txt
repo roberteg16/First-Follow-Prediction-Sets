@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED YES)
 # Pretty print for Clang and warning flags 
 IF(${CMAKE_CXX_COMPILER_ID} STREQUAL Clang)
   add_compile_options(-fcolor-diagnostics)
-    add_compile_options(-Wall -Wextra -pedantic)
+  add_compile_options(-Wall -Wextra -pedantic)
 ENDIF()
 
 # Include all the includes
