@@ -4,11 +4,14 @@ project(ProductionSet CXX)
 # Generate compile_commands.json
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Use C++20 standard since we are using std::ranges library
+set(CMAKE_CXX_STANDARD 20 CACHE STRING "C++ standard to conform to" FORCE)
+set(CMAKE_CXX_STANDARD_REQUIRED YES)
+
 # Pretty print for Clang and warning flags 
 IF(${CMAKE_CXX_COMPILER_ID} STREQUAL Clang)
   add_compile_options(-fcolor-diagnostics)
     add_compile_options(-Wall -Wextra -pedantic)
-    add_definitions(-std=c++20)
 ENDIF()
 
 # Include all the includes
