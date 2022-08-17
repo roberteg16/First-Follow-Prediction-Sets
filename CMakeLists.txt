@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.16.3)
 project(ProductionSet CXX)
 
-# Generate compile_commands.json
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
 # Use C++20 standard since we are using std::ranges library
 set(CMAKE_CXX_STANDARD 20 CACHE STRING "C++ standard to conform to" FORCE)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
