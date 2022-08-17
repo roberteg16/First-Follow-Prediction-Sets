@@ -42,27 +42,26 @@ static bool AreAllTerminal(const Rules &rules, ProductionStatus &prodStatus) {
 /// then we need more iterations, so we return true. True otherwise
 static bool AddNextSymbolInProdIfContainsEpsilon(ProductionStatus &prodStatus) {
   // Check if it has epsilon
-  if (prodStatus.Expansion.contains(EpsilonStr)) {
-    // Contains epsilon, check if there are remaining symbols to add in the
-    // production
-    if (prodStatus.CurrentIndex < prodStatus.Prod.size()) {
-      // Remove epsilon, we are going to append the next symbol
-      prodStatus.Expansion.erase(EpsilonStr);
-
-      // Add new symbol to expand the firsts
-      std::string_view newSymbol = prodStatus.Prod[prodStatus.CurrentIndex];
-      prodStatus.Expansion.insert(newSymbol);
-
-      // Increment so next time we'll check for the next symbol
-      prodStatus.CurrentIndex++;
-
-      // Symbol added
-      return true;
-    }
+  if (!prodStatus.Expansion.contains(EpsilonStr)) {
+    return false;
   }
 
-  // Not symbol added
-  return false;
+  // Check if there are remaining symbols to add in the production
+  if (prodStatus.CurrentIndex >= prodStatus.Prod.size()) {
+    return false;
+  }
+
+  // Remove epsilon, we are going to append the next symbol
+  prodStatus.Expansion.erase(EpsilonStr);
+
+  // Add new symbol to expand the firsts
+  std::string_view newSymbol = prodStatus.Prod[prodStatus.CurrentIndex];
+  prodStatus.Expansion.insert(newSymbol);
+
+  // Increment so next time we'll check for the next symbol
+  prodStatus.CurrentIndex++;
+
+  return true;
 }
 
 static bool TryResolveProd(const Rules &rules,
